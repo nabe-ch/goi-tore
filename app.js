@@ -38,8 +38,10 @@ function headers() { return { Authorization: `Bearer ${cfg().token}`, Accept: 'a
 async function load() {
   if (!isCloud()) return { data: LS.get('goiData', null) || emptyData(), sha: null };
   const r = await fetch(apiUrl() + '?t=' + Date.now(), { headers: headers(), cache: 'no-store' });
-  if (r.status === 404) return { data: emptyData(), sha: null };
-  if (r.status === 401 || r.status === 403) throw new Error('合い鍵（トークン）が正しくないか、期限切れです');
+  // 404：リポジトリが無い、または合い鍵にこのリポジトリの権限が無い（GitHubは権限が無いときも404を返す）
+  if (r.status === 404) throw new Error('データが読めません。合い鍵で「goi-tore-data」を選んでいるか、設定のユーザー名・リポジトリ名を確認してください');
+  if (r.status === 401) throw new Error('合い鍵が正しくないか、期限切れです');
+  if (r.status === 403) throw new Error('合い鍵に読み取りの権限がありません（Contents）');
   if (!r.ok) throw new Error('読み込みに失敗しました（' + r.status + '）');
   const j = await r.json();
   return { data: { ...emptyData(), ...JSON.parse(b64ToUtf8(j.content)) }, sha: j.sha };
@@ -57,6 +59,8 @@ async function change(mutate, message) {
     if (sha) body.sha = sha;
     const r = await fetch(apiUrl(), { method: 'PUT', headers: { ...headers(), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (r.ok) { state.data = data; LS.set('goiCache', data); render(); setStatus(); return true; }
+    if (r.status === 403 || r.status === 404) throw new Error('保存できません。合い鍵の権限を「Contents：Read and write」にしてください');
+    if (r.status === 401) throw new Error('合い鍵が正しくないか、期限切れです');
     if (r.status !== 409 && r.status !== 422) throw new Error('保存に失敗しました（' + r.status + '）');
   }
   throw new Error('ほかの端末と同時に保存されたため、保存できませんでした。もう一度お試しください');
