@@ -44,6 +44,7 @@
 ## Claudeの作業（メモを調べるとき）
 1. `node C:\Users\user\Desktop\code\goi-tore\tools\apply.js list` … GitHubの最新を取り、メモを todo（調べる）と skip（登録済み・調べ済み＝調べずに消す）に分ける
 2. todo の言葉を調べる（辞書・百科事典など。出典と確度を source に書く。分からなければ登録せず、ユーザーに報告）
+   - **辞書に載っていない言葉（流行語・ネットの言葉など）も調べる**（2026-10-31 ユーザー指示）：報道・公式の発表・解説記事・実例を複数見て、意味と広まった時期・場所を書き、source に「辞書未掲載」と確度を付ける
 3. 結果を JSON（`[{word, reading, meaning, example, category, source}]`）にして `node tools/apply.js add <file.json>` … 登録・メモから削除（skip分も）・GitHubへ送る
 - 取り込み先 `C:\Users\user\Desktop\code\goi-tore-data` は、毎回GitHubの最新に**強制的にそろえる**（このPCには独自の変更を置かない）
 - 例文は「実況での使い方」。チャンネルの話し方（のんびり・方言まじり）に合わせて、短く
@@ -72,5 +73,10 @@
 1. ユーザー：github.com で空のリポジトリを2つ作る（`goi-tore`＝公開、`goi-tore-data`＝非公開）
 2. Claude：両方に push（公開の前に確認）
 3. ユーザー：`goi-tore` の Settings → Pages → main / (root) を選ぶ
-4. ユーザー：fine-grained トークンを作る（Repository access＝goi-tore-data だけ、Permissions＝Contents：Read and write、期限は1年など）→ PCとスマホのアプリの「設定」に入れる
+4. ユーザー：fine-grained トークンを作る（**名前は「goitore」**、Repository access＝goi-tore-data だけ、Permissions＝Contents：Read and write、期限は1年など）→ PCとスマホのアプリの「設定」に入れる
+   - トークンの値は、どこにも記録しない（各端末のアプリの中だけ）。期限が切れたら、GitHubの Settings → Developer settings → Fine-grained tokens の「goitore」を作り直し（Regenerate）、両方の端末に入れ直す
+
+## 公開の状態（2026-10-31）
+- 画面：https://nabe-ch.github.io/goi-tore/ （GitHub Pages、main / root。pushで自動更新。公開を確認済み）
+- リポジトリ：nabe-ch/goi-tore（公開）・nabe-ch/goi-tore-data（非公開、空のデータを送信済み）
 5. スマホ：公開URLを開いて「ホーム画面に追加」
