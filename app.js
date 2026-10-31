@@ -1,6 +1,6 @@
 // 語彙とれ：実況で使える言葉を集めて、一覧で見て、意味から言葉を当てる練習をするアプリ
-// - データは1つのJSONファイル（data.json）。非公開のGitHubリポジトリに置き、PCとスマホで同じものを使う
-// - 合い鍵（GitHubのトークン）が未設定のときは、この端末の中だけに保存する（お試しモード）
+// - データは1つのJSONファイル（data.json）。公開のGitHubリポジトリ goi-tore-words に置き、PCとスマホで同じものを使う
+// - 合い鍵（GitHubのトークン）を入れた端末（PC）は、読み書きできる。合い鍵なしの端末（スマホ）は「見るだけ」（データのリポジトリは公開。2026-10-31 ユーザー決定）
 // - 書き込みは「最新を読む → 変更を当てる → sha（版の番号）つきで保存」。ほかの端末と同時に保存してぶつかったら、読み直してやり直す
 'use strict';
 
@@ -17,7 +17,8 @@ const LS = {
   get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* 保存できなくても続ける */ } },
 };
-const cfg = () => LS.get('goiCfg', { owner: 'nabe-ch', repo: 'goi-tore-data', path: 'data.json', token: '' });
+// データの置き場所は公開の goi-tore-words（2026-10-31に、非公開の goi-tore-data から移した。古い設定は読み替える）
+const cfg = () => { const c = LS.get('goiCfg', { owner: 'nabe-ch', repo: 'goi-tore-words', path: 'data.json', token: '' }); if (c.repo === 'goi-tore-data') c.repo = 'goi-tore-words'; return c; };
 const isCloud = () => !!cfg().token;
 
 // ---------- GitHub とのやりとり ----------
@@ -32,16 +33,21 @@ function utf8ToB64(str) {
   return btoa(bin);
 }
 function apiUrl() { const c = cfg(); return `https://api.github.com/repos/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}/contents/${c.path}`; }
-function headers() { return { Authorization: `Bearer ${cfg().token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }; }
+function headers() {
+  const h = { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
+  if (cfg().token) h.Authorization = `Bearer ${cfg().token}`;
+  return h;
+}
+// 保存の記録に付ける名前とメール（個人のメールアドレスを公開しないため、GitHubの匿名用アドレス）
+const AUTHOR = { name: 'nabe-ch', email: 'nabe-ch@users.noreply.github.com' };
 
-// 読み込み：{ data, sha }。ファイルがまだ無ければ空のデータ
+// 読み込み：{ data, sha }。合い鍵なしでも、公開のデータを読む
 async function load() {
-  if (!isCloud()) return { data: LS.get('goiData', null) || emptyData(), sha: null };
   const r = await fetch(apiUrl() + '?t=' + Date.now(), { headers: headers(), cache: 'no-store' });
   // 404：リポジトリが無い、または合い鍵にこのリポジトリの権限が無い（GitHubは権限が無いときも404を返す）
-  if (r.status === 404) throw new Error('データが読めません。合い鍵で「goi-tore-data」を選んでいるか、設定のユーザー名・リポジトリ名を確認してください');
+  if (r.status === 404) throw new Error('データが読めません。合い鍵で「goi-tore-words」を選んでいるか、設定のユーザー名・リポジトリ名を確認してください');
   if (r.status === 401) throw new Error('合い鍵が正しくないか、期限切れです');
-  if (r.status === 403) throw new Error('合い鍵に読み取りの権限がありません（Contents）');
+  if (r.status === 403 || r.status === 429) throw new Error(isCloud() ? '合い鍵に読み取りの権限がありません（Contents）' : '読み込みの回数が多すぎます。しばらく待ってから開き直してください');
   if (!r.ok) throw new Error('読み込みに失敗しました（' + r.status + '）');
   const j = await r.json();
   return { data: { ...emptyData(), ...JSON.parse(b64ToUtf8(j.content)) }, sha: j.sha };
@@ -49,13 +55,13 @@ async function load() {
 
 // 変更：mutate(data) を最新のデータに当てて保存。ぶつかったら3回までやり直す
 async function change(mutate, message) {
+  if (!isCloud()) throw new Error('この端末は見るだけです。追加・変更は、合い鍵を入れたPCで行ってください');
   for (let i = 0; i < 3; i++) {
     const { data, sha } = await load();
     const result = mutate(data);
     if (result === false) { state.data = data; render(); return false; } // 変更なし
     data.updatedAt = new Date().toISOString();
-    if (!isCloud()) { LS.set('goiData', data); state.data = data; render(); return true; }
-    const body = { message: message || '語彙とれ：更新', content: utf8ToB64(JSON.stringify(data, null, 2)) };
+    const body = { message: message || '語彙とれ：更新', content: utf8ToB64(JSON.stringify(data, null, 2)), author: AUTHOR, committer: AUTHOR };
     if (sha) body.sha = sha;
     const r = await fetch(apiUrl(), { method: 'PUT', headers: { ...headers(), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (r.ok) { state.data = data; LS.set('goiCache', data); render(); setStatus(); return true; }
@@ -74,14 +80,14 @@ const state = {
 
 function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2200); }
 function setStatus(text) {
-  $('#status').textContent = text || (isCloud() ? `同期中のデータ（${(state.data.updatedAt || '').slice(5, 16).replace('T', ' ') || '—'}）` : 'お試しモード（この端末だけ）');
+  $('#status').textContent = text || (isCloud() ? `同期中のデータ（${(state.data.updatedAt || '').slice(5, 16).replace('T', ' ') || '—'}）` : '見るだけ（合い鍵なし）');
 }
 async function refresh(silent) {
   try {
     state.loading = true; if (!silent) setStatus('読み込み中…');
     const { data } = await load();
     state.data = data; state.error = '';
-    if (isCloud()) LS.set('goiCache', data);
+    LS.set('goiCache', data);
   } catch (e) { state.error = e.message; }
   state.loading = false; setStatus(state.error ? '⚠ ' + state.error : ''); render();
 }
@@ -133,7 +139,8 @@ function wordItem(w) {
       ${w.example ? `<div class="note">実況での使い方</div><div class="ex">${esc(w.example)}</div>` : ''}
       <div class="uses">${(w.uses || []).length ? '使った動画：' + w.uses.slice(-5).reverse().map((u) => `${esc(u.date)} ${esc(u.video)}`).join('／') : 'まだ動画で使っていません'}</div>
       ${w.source ? `<div class="note">意味の出典：${esc(w.source)}</div>` : ''}
-      <div class="acts"><button class="btn red sm" data-use="${esc(w.id)}">動画で使った</button><button class="btn sm" data-edit="${esc(w.id)}">直す</button><button class="btn sm ghost" data-del="${esc(w.id)}">削除</button></div>
+      ${isCloud() ? '' : '<div class="note">「動画で使った」の記録・修正は、PCで行えます</div>'}
+      <div class="acts" ${isCloud() ? '' : 'hidden'}><button class="btn red sm" data-use="${esc(w.id)}">動画で使った</button><button class="btn sm" data-edit="${esc(w.id)}">直す</button><button class="btn sm ghost" data-del="${esc(w.id)}">削除</button></div>
     </div>` : ''}
   </li>`;
 }
@@ -165,8 +172,9 @@ function viewMemo() {
   return `<div class="card">
     <h2>追加してほしい言葉（メモ）</h2>
     <p class="sub">言葉だけ入れてください。意味・大項目・例文は、Claudeに「語彙とれのメモを調べて」と頼んだときに調べて登録し、メモから消します</p>
-    <div class="row"><input type="text" id="mWord" placeholder="例：目から鱗" maxlength="60" enterkeyhint="done"><button class="btn red" id="mAdd" style="flex:0 0 auto">追加</button></div>
-    <ul class="memo">${state.data.memo.length ? state.data.memo.slice().reverse().map((m) => `<li><span>${esc(m.word)}</span><small>${esc((m.addedAt || '').slice(5, 10).replace('-', '/'))}</small><button class="icon" data-mdel="${esc(m.id)}" title="メモから消す">✕</button></li>`).join('') : '<li class="empty" style="justify-content:center">メモは空です</li>'}</ul>
+    ${isCloud() ? '' : '<div class="warnbox">この端末は<b>見るだけ</b>です。メモの追加・削除は、合い鍵を入れたPCで行ってください。</div>'}
+    ${!isCloud() ? '' : `<div class="row"><input type="text" id="mWord" placeholder="例：目から鱗" maxlength="60" enterkeyhint="done"><button class="btn red" id="mAdd" style="flex:0 0 auto">追加</button></div>`}
+    <ul class="memo">${state.data.memo.length ? state.data.memo.slice().reverse().map((m) => `<li><span>${esc(m.word)}</span><small>${esc((m.addedAt || '').slice(5, 10).replace('-', '/'))}</small>${isCloud() ? `<button class="icon" data-mdel="${esc(m.id)}" title="メモから消す">✕</button>` : ''}</li>`).join('') : '<li class="empty" style="justify-content:center">メモは空です</li>'}</ul>
   </div>`;
 }
 
@@ -174,9 +182,9 @@ function viewSettings() {
   const c = cfg();
   return `<div class="card">
     <h2>同期の設定（この端末）</h2>
-    ${isCloud() ? '' : '<div class="warnbox">今は<b>お試しモード</b>です。言葉はこの端末の中だけに保存されます。PCとスマホで同じにするには、下に合い鍵（GitHubのトークン）を入れてください。</div>'}
+    ${isCloud() ? '' : '<div class="warnbox">この端末は<b>見るだけ</b>です（一覧・練習・メモの確認ができます）。追加・変更をするPCだけ、下に合い鍵（GitHubのトークン「goitore」）を入れてください。</div>'}
     <label class="f">GitHubのユーザー名</label><input type="text" id="sOwner" value="${esc(c.owner)}" autocomplete="off">
-    <label class="f">データを置くリポジトリ（非公開）</label><input type="text" id="sRepo" value="${esc(c.repo)}" autocomplete="off">
+    <label class="f">データを置くリポジトリ（公開）</label><input type="text" id="sRepo" value="${esc(c.repo)}" autocomplete="off">
     <label class="f">合い鍵（GitHubのトークン。このリポジトリの「Contents：読み書き」だけを許可したもの）</label>
     <input type="password" id="sToken" value="" placeholder="${c.token ? '設定済み（変えるときだけ入力）' : '未設定'}" autocomplete="off">
     <div class="row" style="margin-top:12px"><button class="btn red" id="sSave">保存して読み込む</button>${c.token ? '<button class="btn ghost" id="sClear">合い鍵を消す</button>' : ''}</div>
@@ -240,7 +248,7 @@ function bind() {
     LS.set('goiCfg', { ...c, owner: $('#sOwner').value.trim() || c.owner, repo: $('#sRepo').value.trim() || c.repo, token: t || c.token });
     toast('保存しました'); refresh();
   });
-  on('#sClear', 'onclick', () => { if (!confirm('この端末の合い鍵を消しますか？（データは消えません）')) return; LS.set('goiCfg', { ...cfg(), token: '' }); LS.set('goiCache', null); state.data = LS.get('goiData', null) || emptyData(); toast('消しました'); setStatus(); render(); });
+  on('#sClear', 'onclick', () => { if (!confirm('この端末の合い鍵を消しますか？（データは消えません。見るだけになります）')) return; LS.set('goiCfg', { ...cfg(), token: '' }); toast('消しました'); refresh(); });
   on('#dReload', 'onclick', () => refresh());
   on('#dExport', 'onclick', () => {
     const a = document.createElement('a');

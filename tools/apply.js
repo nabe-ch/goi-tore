@@ -1,4 +1,4 @@
-// Claude用：メモの言葉を調べて登録するための道具（データの置き場所：C:\Users\user\Desktop\code\goi-tore-data\data.json）
+// Claude用：メモの言葉を調べて登録するための道具（データの置き場所：C:\Users\user\Desktop\code\goi-tore-words\data.json）
 // 使い方：
 //   node tools/apply.js list            … GitHubから最新を取り、メモを「調べる必要あり／登録済み・調べ済み（調べずに消す）」に分けて表示
 //   node tools/apply.js add <file.json> … 調べた結果（[{word, reading, meaning, example, category, source}]）を登録し、
@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-const DATA_DIR = 'C:\\Users\\user\\Desktop\\code\\goi-tore-data';
+const DATA_DIR = 'C:\\Users\\user\\Desktop\\code\\goi-tore-words';
 const FILE = path.join(DATA_DIR, 'data.json');
 const CATS = ['心理学', '生活', '漫画', '歴史', '最新技術', 'ことわざ・慣用句', '科学', 'ゲーム', 'スポーツ', '食べ物', 'その他'];
 const norm = (s) => String(s || '').normalize('NFKC').trim().toLowerCase();
