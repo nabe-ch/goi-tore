@@ -63,7 +63,8 @@
 | index.html / style.css / app.js | 画面 |
 | sw.js / manifest.webmanifest | ホーム画面に追加・電波なしで開く |
 | icon.svg / icon-192.png / icon-512.png / apple-touch-icon.png | アイコン |
-| tools/make-icon.js | アイコンの作成（sharp は report-pdf のものを使う） |
+| icon.ico | デスクトップのショートカット用のアイコン |
+| tools/make-icon.js | アイコンの作成（PNG・ICO。sharp は report-pdf のものを使う） |
 | tools/apply.js | Claude用：メモを調べて登録する道具 |
 | tools/serve.js | PCで試すときの小さなサーバー（http://localhost:5190） |
 
@@ -78,6 +79,9 @@
 3. ユーザー：`goi-tore` の Settings → Pages → main / (root) を選ぶ
 4. ユーザー：fine-grained トークンを作る（**名前は「goitore」**、Repository access＝goi-tore-words だけ、Permissions＝Contents：Read and write、期限は1年など）→ **PCの**アプリの「設定」に入れる（スマホは入れない）
    - トークンの値は、どこにも記録しない（各端末のアプリの中だけ）。期限が切れたら、GitHubの Settings → Developer settings → Fine-grained tokens の「goitore」を作り直し（Regenerate）、両方の端末に入れ直す
+
+## PCのデスクトップ（2026-10-31）
+- デスクトップの「**語彙とれ**」（ショートカット）＝ Chrome を `--app=https://nabe-ch.github.io/goi-tore/` で開く（アドレスバーのない窓）。アイコンは icon.ico。合い鍵は Chrome の中に保存済みなので、そのまま読み書きできる
 
 ## 公開の状態（2026-10-31）
 - 画面：https://nabe-ch.github.io/goi-tore/ （GitHub Pages、main / root。pushで自動更新。公開を確認済み）
