@@ -41,13 +41,22 @@ function headers() {
 // 保存の記録に付ける名前とメール（個人のメールアドレスを公開しないため、GitHubの匿名用アドレス）
 const AUTHOR = { name: 'nabe-ch', email: 'nabe-ch@users.noreply.github.com' };
 
+// 合い鍵なしの読み込み先。APIは同じ回線で1時間60回までなので、回数の上限がない公開ファイルの配信を使う（更新の反映は最大5分ほど遅れる）
+function rawUrl() { const c = cfg(); return `https://raw.githubusercontent.com/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}/main/${c.path}`; }
+
 // 読み込み：{ data, sha }。合い鍵なしでも、公開のデータを読む
 async function load() {
+  if (!isCloud()) {
+    const r = await fetch(rawUrl(), { cache: 'no-store' });
+    if (r.status === 404) throw new Error('データが読めません。設定のユーザー名・リポジトリ名を確認してください');
+    if (!r.ok) throw new Error('読み込みに失敗しました（' + r.status + '）');
+    return { data: { ...emptyData(), ...(await r.json()) }, sha: null };
+  }
   const r = await fetch(apiUrl() + '?t=' + Date.now(), { headers: headers(), cache: 'no-store' });
   // 404：リポジトリが無い、または合い鍵にこのリポジトリの権限が無い（GitHubは権限が無いときも404を返す）
   if (r.status === 404) throw new Error('データが読めません。合い鍵で「goi-tore-words」を選んでいるか、設定のユーザー名・リポジトリ名を確認してください');
   if (r.status === 401) throw new Error('合い鍵が正しくないか、期限切れです');
-  if (r.status === 403 || r.status === 429) throw new Error(isCloud() ? '合い鍵に読み取りの権限がありません（Contents）' : '読み込みの回数が多すぎます。しばらく待ってから開き直してください');
+  if (r.status === 403 || r.status === 429) throw new Error('合い鍵に読み取りの権限がありません（Contents）');
   if (!r.ok) throw new Error('読み込みに失敗しました（' + r.status + '）');
   const j = await r.json();
   return { data: { ...emptyData(), ...JSON.parse(b64ToUtf8(j.content)) }, sha: j.sha };
