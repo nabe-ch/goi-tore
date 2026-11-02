@@ -1,6 +1,6 @@
 // 語彙とれ：実況で使える言葉を集めて、一覧で見て、意味から言葉を当てる練習をするアプリ
 // - データは1つのJSONファイル（data.json）。公開のGitHubリポジトリ goi-tore-words に置き、PCとスマホで同じものを使う
-// - 合い鍵（GitHubのトークン）を入れた端末（PC）は、読み書きできる。合い鍵なしの端末（スマホ）は「見るだけ」（データのリポジトリは公開。2026-10-31 ユーザー決定）
+// - 合い鍵（GitHubのトークン）を入れた端末は、読み書きできる。合い鍵なしの端末は「見るだけ」（データのリポジトリは公開）。スマホへは、PCの設定画面のQRで渡せる（2026-11-02 ユーザー決定）
 // - 書き込みは「最新を読む → 変更を当てる → sha（版の番号）つきで保存」。ほかの端末と同時に保存してぶつかったら、読み直してやり直す
 'use strict';
 
@@ -64,7 +64,7 @@ async function load() {
 
 // 変更：mutate(data) を最新のデータに当てて保存。ぶつかったら3回までやり直す
 async function change(mutate, message) {
-  if (!isCloud()) throw new Error('この端末は見るだけです。追加・変更は、合い鍵を入れたPCで行ってください');
+  if (!isCloud()) throw new Error('この端末は見るだけです。追加・変更は、合い鍵を入れた端末で行ってください');
   for (let i = 0; i < 3; i++) {
     const { data, sha } = await load();
     const result = mutate(data);
@@ -85,8 +85,31 @@ async function change(mutate, message) {
 const state = {
   view: 'list', data: LS.get('goiCache', null) || emptyData(), q: '', cat: 'all', sort: 'new', open: null,
   quiz: { cat: 'all', id: null, shown: false }, loading: false, error: '',
-  drafts: {}, composing: false, pendingRender: false,
+  drafts: {}, composing: false, pendingRender: false, qrUntil: 0, qrTimer: null,
 };
+
+// ---------- 合い鍵のQR（スマホへ渡す） ----------
+const QR_MS = 60000;
+// 録画・配信に映らないよう、ボタンを押したときだけ、60秒だけ表示する。QRはこの端末の中で作り、外へは送らない
+function showQr() {
+  if (!confirm('録画・配信・画面共有を止めていますか？\nQRが映ると、合い鍵を読み取られます。')) return;
+  state.qrUntil = Date.now() + QR_MS;
+  clearTimeout(state.qrTimer);
+  state.qrTimer = setTimeout(hideQr, QR_MS);
+  render();
+}
+function hideQr() {
+  if (!state.qrUntil) return;
+  state.qrUntil = 0;
+  clearTimeout(state.qrTimer);
+  render();
+}
+function qrSvg() {
+  const q = qrcode(0, 'M');
+  q.addData(cfg().token, 'Byte');
+  q.make();
+  return q.createSvgTag({ cellSize: 4, margin: 16, scalable: true });
+}
 
 function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2200); }
 function setStatus(text) {
@@ -191,7 +214,7 @@ function viewMemo() {
   return `<div class="card">
     <h2>追加してほしい言葉（メモ）</h2>
     <p class="sub">言葉だけ入れてください。意味・大項目・例文は、Claudeに「語彙とれのメモを調べて」と頼んだときに調べて登録し、メモから消します</p>
-    ${isCloud() ? '' : '<div class="warnbox">この端末は<b>見るだけ</b>です。メモの追加・削除は、合い鍵を入れたPCで行ってください。</div>'}
+    ${isCloud() ? '' : '<div class="warnbox">この端末は<b>見るだけ</b>です。追加するには、「設定」で合い鍵を入れてください（PCの設定画面のQRで渡せます）。</div>'}
     ${!isCloud() ? '' : `<div class="row"><input type="text" id="mWord" placeholder="例：目から鱗" maxlength="60" enterkeyhint="done"><button class="btn red" id="mAdd" style="flex:0 0 auto">追加</button></div>`}
     <ul class="memo">${state.data.memo.length ? state.data.memo.slice().reverse().map((m) => `<li><span>${esc(m.word)}</span><small>${esc((m.addedAt || '').slice(5, 10).replace('-', '/'))}</small>${isCloud() ? `<button class="icon" data-mdel="${esc(m.id)}" title="メモから消す">✕</button>` : ''}</li>`).join('') : '<li class="empty" style="justify-content:center">メモは空です</li>'}</ul>
   </div>`;
@@ -203,7 +226,7 @@ function viewPhrases() {
   return `<div class="card">
     <h2>使いたい言い回し（メモ）</h2>
     <p class="sub">思いついた言い回しを、そのまま残すページです。Claudeは調べません。データは公開なので、個人情報は書かないでください</p>
-    ${isCloud() ? `<div class="row"><input type="text" id="pText" placeholder="例：弾の使い方が、給料日前の財布" maxlength="200" enterkeyhint="done"><button class="btn red" id="pAdd" style="flex:0 0 auto">追加</button></div>` : '<div class="warnbox">この端末は<b>見るだけ</b>です。追加・削除は、合い鍵を入れたPCで行ってください。</div>'}
+    ${isCloud() ? `<div class="row"><input type="text" id="pText" placeholder="例：弾の使い方が、給料日前の財布" maxlength="200" enterkeyhint="done"><button class="btn red" id="pAdd" style="flex:0 0 auto">追加</button></div>` : '<div class="warnbox">この端末は<b>見るだけ</b>です。追加するには、「設定」で合い鍵を入れてください（PCの設定画面のQRで渡せます）。</div>'}
     <ul class="memo">${ps.length ? ps.slice().reverse().map((p) => `<li><span>${esc(p.text)}</span><small>${esc((p.addedAt || '').slice(5, 10).replace('-', '/'))}</small>${isCloud() ? `<button class="icon" data-pdel="${esc(p.id)}" title="消す">✕</button>` : ''}</li>`).join('') : '<li class="empty" style="justify-content:center">まだありません</li>'}</ul>
   </div>`;
 }
@@ -212,7 +235,7 @@ function viewSettings() {
   const c = cfg();
   return `<div class="card">
     <h2>同期の設定（この端末）</h2>
-    ${isCloud() ? '' : '<div class="warnbox">この端末は<b>見るだけ</b>です（一覧・練習・メモの確認ができます）。追加・変更をするPCだけ、下に合い鍵（GitHubのトークン「goitore」）を入れてください。</div>'}
+    ${isCloud() ? '' : '<div class="warnbox">この端末は<b>見るだけ</b>です（一覧・練習・メモの確認ができます）。追加・変更をするには、下に合い鍵（GitHubのトークン「goitore」）を貼り付けてください。PCの設定画面のQRで渡せます。</div>'}
     <label class="f">GitHubのユーザー名</label><input type="text" id="sOwner" value="${esc(c.owner)}" autocomplete="off">
     <label class="f">データを置くリポジトリ（公開）</label><input type="text" id="sRepo" value="${esc(c.repo)}" autocomplete="off">
     <label class="f">合い鍵（GitHubのトークン。このリポジトリの「Contents：読み書き」だけを許可したもの）</label>
@@ -220,6 +243,14 @@ function viewSettings() {
     <div class="row" style="margin-top:12px"><button class="btn red" id="sSave">保存して読み込む</button>${c.token ? '<button class="btn ghost" id="sClear">合い鍵を消す</button>' : ''}</div>
     <p class="note">合い鍵はこの端末のブラウザの中にだけ保存され、アプリの公開ページには含まれません。</p>
   </div>
+  ${!isCloud() ? '' : `<div class="card">
+    <h2>スマホに合い鍵を渡す</h2>
+    ${state.qrUntil ? `<div class="qrbox">${qrSvg()}</div>
+    <ol class="note"><li>スマホのカメラでQRを読み、出てきた文字をコピーする</li><li>スマホの語彙とれの「設定」で、合い鍵の欄に貼り付ける</li><li>「保存して読み込む」を押す</li></ol>
+    <p class="note">60秒で消えます。</p>
+    <button class="btn" id="sQrHide">QRを消す</button>` : `<p class="note">QRは押したときだけ、60秒表示します。録画・配信中は使わないでください。</p>
+    <button class="btn" id="sQr">QRを表示する</button>`}
+  </div>`}
   <div class="card">
     <h2>データ</h2>
     <p class="note">言葉 ${state.data.words.length}語／メモ ${state.data.memo.length}件／最終更新 ${esc((state.data.updatedAt || '—').replace('T', ' ').slice(0, 16))}</p>
@@ -304,7 +335,9 @@ function bind() {
     LS.set('goiCfg', { ...c, owner: $('#sOwner').value.trim() || c.owner, repo: $('#sRepo').value.trim() || c.repo, token: t || c.token });
     toast('保存しました'); refresh();
   });
-  on('#sClear', 'onclick', () => { if (!confirm('この端末の合い鍵を消しますか？（データは消えません。見るだけになります）')) return; LS.set('goiCfg', { ...cfg(), token: '' }); toast('消しました'); refresh(); });
+  on('#sClear', 'onclick', () => { if (!confirm('この端末の合い鍵を消しますか？（データは消えません。見るだけになります）')) return; LS.set('goiCfg', { ...cfg(), token: '' }); state.qrUntil = 0; clearTimeout(state.qrTimer); toast('消しました'); refresh(); });
+  on('#sQr', 'onclick', showQr);
+  on('#sQrHide', 'onclick', hideQr);
   on('#dReload', 'onclick', () => refresh());
   on('#dExport', 'onclick', () => {
     const a = document.createElement('a');
@@ -313,11 +346,11 @@ function bind() {
   });
 }
 
-document.querySelectorAll('#tabs button').forEach((b) => b.onclick = () => { state.view = b.dataset.v; render(); });
+document.querySelectorAll('#tabs button').forEach((b) => b.onclick = () => { state.view = b.dataset.v; state.qrUntil = 0; clearTimeout(state.qrTimer); render(); });
 document.addEventListener('compositionstart', () => { state.composing = true; });
 document.addEventListener('compositionend', () => { state.composing = false; if (state.pendingRender || document.activeElement?.id === 'q') { state.pendingRender = false; const q = $('#q'); if (q) state.q = q.value; render(); } });
 // ほかの端末で変わっていれば反映する（画面に戻ったとき・1分ごと）
-document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(true); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) hideQr(); else refresh(true); });
 setInterval(() => { if (!document.hidden && isCloud()) refresh(true); }, 60000);
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 setStatus(); render(); refresh();
