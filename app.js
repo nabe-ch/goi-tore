@@ -10,7 +10,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const norm = (s) => String(s || '').normalize('NFKC').trim().toLowerCase();
 
 const DEFAULT_CATEGORIES = ['心理学', '生活', '漫画', '歴史', '最新技術', 'ことわざ・慣用句', '科学', 'ゲーム', 'スポーツ', '食べ物', 'その他'];
-const emptyData = () => ({ version: 1, updatedAt: '', categories: DEFAULT_CATEGORIES.slice(), words: [], memo: [], researched: [] });
+const emptyData = () => ({ version: 1, updatedAt: '', categories: DEFAULT_CATEGORIES.slice(), words: [], memo: [], phrases: [], researched: [] });
 
 // ---------- 設定（端末ごと） ----------
 const LS = {
@@ -76,6 +76,7 @@ async function change(mutate, message) {
 const state = {
   view: 'list', data: LS.get('goiCache', null) || emptyData(), q: '', cat: 'all', sort: 'new', open: null,
   quiz: { cat: 'all', id: null, shown: false }, loading: false, error: '',
+  drafts: {}, composing: false, pendingRender: false,
 };
 
 function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2200); }
@@ -96,13 +97,20 @@ async function run(fn) {
 }
 
 // ---------- 画面 ----------
+const INPUTS = ['q', 'mWord', 'pText'];
 function render() {
+  if (state.composing) { state.pendingRender = true; return; }
+  const a = document.activeElement;
+  const keep = a && INPUTS.includes(a.id) ? { id: a.id, start: a.selectionStart, end: a.selectionEnd } : null;
+  INPUTS.filter((id) => id !== 'q').forEach((id) => { const el = document.getElementById(id); if (el) state.drafts[id] = el.value; });
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.v === state.view));
   const memoBtn = document.querySelector('#tabs button[data-v="memo"]');
   memoBtn.innerHTML = 'メモ' + (state.data.memo.length ? `<span class="cnt">${state.data.memo.length}</span>` : '');
-  const v = { list: viewList, quiz: viewQuiz, memo: viewMemo, settings: viewSettings }[state.view];
+  const v = { list: viewList, quiz: viewQuiz, memo: viewMemo, phrases: viewPhrases, settings: viewSettings }[state.view];
   $('#app').innerHTML = v();
   bind();
+  INPUTS.filter((id) => id !== 'q').forEach((id) => { const el = document.getElementById(id); if (el && state.drafts[id]) el.value = state.drafts[id]; });
+  if (keep) { const el = document.getElementById(keep.id); if (el) { el.focus(); try { el.setSelectionRange(keep.start, keep.end); } catch (e) { /* 検索欄など、位置を指定できない入力欄 */ } } }
 }
 
 function filtered() {
@@ -133,14 +141,16 @@ function viewList() {
 function wordItem(w) {
   const open = state.open === w.id;
   return `<li data-open="${esc(w.id)}">
-    <div class="w-head"><span class="w-word">${esc(w.word)}</span>${w.reading ? `<span class="w-read">${esc(w.reading)}</span>` : ''}<span class="tag">${esc(w.category || 'その他')}</span><span class="w-used">使った ${w.usedCount || 0}回</span></div>
+    <div class="w-head"><span class="w-word">${esc(w.word)}</span>${w.reading ? `<span class="w-read">${esc(w.reading)}</span>` : ''}<span class="tag">${esc(w.category || 'その他')}</span><span class="w-used">使った ${w.usedCount || 0}回<span class="w-arrow">${open ? '▲' : '▼'}</span></span></div>
     <div class="w-mean">${esc(w.meaning)}</div>
     ${open ? `<div class="w-detail" data-stop="1">
       ${w.example ? `<div class="note">実況での使い方</div><div class="ex">${esc(w.example)}</div>` : ''}
+      ${(w.related || []).length ? `<div class="note">一緒に話せる言葉</div><ul class="pair">${w.related.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+      ${(w.lines || []).length ? `<div class="note">ユニークな言い回し</div><ul class="pair">${w.lines.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
       <div class="uses">${(w.uses || []).length ? '使った動画：' + w.uses.slice(-5).reverse().map((u) => `${esc(u.date)} ${esc(u.video)}`).join('／') : 'まだ動画で使っていません'}</div>
       ${w.source ? `<div class="note">意味の出典：${esc(w.source)}</div>` : ''}
       ${isCloud() ? '' : '<div class="note">「動画で使った」の記録・修正は、PCで行えます</div>'}
-      <div class="acts" ${isCloud() ? '' : 'hidden'}><button class="btn red sm" data-use="${esc(w.id)}">動画で使った</button><button class="btn sm" data-edit="${esc(w.id)}">直す</button><button class="btn sm ghost" data-del="${esc(w.id)}">削除</button></div>
+      ${isCloud() ? `<div class="acts"><button class="btn red sm" data-use="${esc(w.id)}">動画で使った</button><button class="btn sm" data-edit="${esc(w.id)}">直す</button><button class="btn sm ghost" data-del="${esc(w.id)}">削除</button></div>` : ''}
     </div>` : ''}
   </li>`;
 }
@@ -178,6 +188,17 @@ function viewMemo() {
   </div>`;
 }
 
+// 思いついた言い回しを、そのまま残すだけのページ（Claudeは調べない）
+function viewPhrases() {
+  const ps = state.data.phrases || [];
+  return `<div class="card">
+    <h2>使いたい言い回し（メモ）</h2>
+    <p class="sub">思いついた言い回しを、そのまま残すページです。Claudeは調べません。データは公開なので、個人情報は書かないでください</p>
+    ${isCloud() ? `<div class="row"><input type="text" id="pText" placeholder="例：弾の使い方が、給料日前の財布" maxlength="200" enterkeyhint="done"><button class="btn red" id="pAdd" style="flex:0 0 auto">追加</button></div>` : '<div class="warnbox">この端末は<b>見るだけ</b>です。追加・削除は、合い鍵を入れたPCで行ってください。</div>'}
+    <ul class="memo">${ps.length ? ps.slice().reverse().map((p) => `<li><span>${esc(p.text)}</span><small>${esc((p.addedAt || '').slice(5, 10).replace('-', '/'))}</small>${isCloud() ? `<button class="icon" data-pdel="${esc(p.id)}" title="消す">✕</button>` : ''}</li>`).join('') : '<li class="empty" style="justify-content:center">まだありません</li>'}</ul>
+  </div>`;
+}
+
 function viewSettings() {
   const c = cfg();
   return `<div class="card">
@@ -198,9 +219,16 @@ function viewSettings() {
 }
 
 // ---------- 操作 ----------
+// 保存は順番に行う（続けて追加しても、ぶつからないように）
+let saveChain = Promise.resolve();
+const enqueue = (fn) => { saveChain = saveChain.then(() => run(fn)); return saveChain; };
+// 保存に失敗したら、消えないように入力欄へ戻す
+const giveBack = (id, text) => { const el = document.getElementById(id); if (el && !el.value) el.value = text; else if (!el) state.drafts[id] = text; };
+// Enterかどうか。日本語の変換を確定するEnterは除く（keyCode 229 は変換中のキー）
+const isEnter = (e) => e.key === 'Enter' && !e.isComposing && e.keyCode !== 229;
 function bind() {
   const on = (sel, ev, fn) => { const el = $(sel); if (el) el[ev] = fn; };
-  on('#q', 'oninput', (e) => { state.q = e.target.value; const pos = e.target.selectionStart; render(); const q = $('#q'); q.focus(); q.setSelectionRange(pos, pos); });
+  on('#q', 'oninput', (e) => { state.q = e.target.value; render(); });
   const sort = $('#sort'); if (sort) { sort.value = state.sort; sort.onchange = (e) => { state.sort = e.target.value; render(); }; }
   document.querySelectorAll('[data-cat]').forEach((b) => b.onclick = () => { state.cat = b.dataset.cat; render(); });
   document.querySelectorAll('[data-qcat]').forEach((b) => b.onclick = () => { state.quiz.cat = b.dataset.qcat; state.quiz.id = null; render(); });
@@ -230,16 +258,35 @@ function bind() {
   }));
   on('#qShow', 'onclick', () => { state.quiz.shown = true; render(); });
   on('#qNext', 'onclick', () => { state.quiz.id = null; render(); });
-  const addMemo = () => run(async () => {
-    const word = $('#mWord').value.trim().slice(0, 60); if (!word) return;
+  const takeInput = (id) => { const i = document.getElementById(id); const v = i ? i.value.trim() : ''; if (i) { i.value = ''; i.focus(); } state.drafts[id] = ''; return v; };
+  const addMemo = () => {
+    const word = takeInput('mWord').slice(0, 60); if (!word) return;
     const k = norm(word);
-    if (state.data.words.some((w) => norm(w.word) === k)) { toast(`「${word}」は登録済みです（一覧にあります）`); $('#mWord').value = ''; return; }
-    let dup = false;
-    await change((d) => { if (d.memo.some((m) => norm(m.word) === k)) { dup = true; return false; } d.memo.push({ id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), word, addedAt: new Date().toISOString() }); }, 'メモの追加');
-    toast(dup ? 'すでにメモにあります' : 'メモに入れました'); const i = $('#mWord'); if (i) { i.value = ''; i.focus(); }
-  });
+    if (state.data.words.some((w) => norm(w.word) === k)) { toast(`「${word}」は登録済みです（一覧にあります）`); return; }
+    toast('保存しています…');
+    enqueue(async () => {
+      let dup = false;
+      try { await change((d) => { if (d.memo.some((m) => norm(m.word) === k)) { dup = true; return false; } d.memo.push({ id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), word, addedAt: new Date().toISOString() }); }, 'メモの追加'); }
+      catch (e) { giveBack('mWord', word); throw e; }
+      toast(dup ? 'すでにメモにあります' : `「${word}」を入れました`);
+    });
+  };
   on('#mAdd', 'onclick', addMemo);
-  on('#mWord', 'onkeydown', (e) => { if (e.key === 'Enter' && !e.isComposing) addMemo(); });
+  on('#mWord', 'onkeydown', (e) => { if (isEnter(e)) addMemo(); });
+  const addPhrase = () => {
+    const text = takeInput('pText').slice(0, 200); if (!text) return;
+    toast('保存しています…');
+    enqueue(async () => {
+      try { await change((d) => { d.phrases = d.phrases || []; d.phrases.push({ id: 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text, addedAt: new Date().toISOString() }); }, '言い回しの追加'); }
+      catch (e) { giveBack('pText', text); throw e; }
+      toast('言い回しを入れました');
+    });
+  };
+  on('#pAdd', 'onclick', addPhrase);
+  on('#pText', 'onkeydown', (e) => { if (isEnter(e)) addPhrase(); });
+  document.querySelectorAll('[data-pdel]').forEach((b) => b.onclick = () => enqueue(async () => {
+    await change((d) => { const n = (d.phrases || []).length; d.phrases = (d.phrases || []).filter((p) => p.id !== b.dataset.pdel); if (d.phrases.length === n) return false; }, '言い回しの削除');
+  }));
   document.querySelectorAll('[data-mdel]').forEach((b) => b.onclick = () => run(async () => {
     await change((d) => { const n = d.memo.length; d.memo = d.memo.filter((m) => m.id !== b.dataset.mdel); if (d.memo.length === n) return false; }, 'メモの削除');
   }));
@@ -258,6 +305,8 @@ function bind() {
 }
 
 document.querySelectorAll('#tabs button').forEach((b) => b.onclick = () => { state.view = b.dataset.v; render(); });
+document.addEventListener('compositionstart', () => { state.composing = true; });
+document.addEventListener('compositionend', () => { state.composing = false; if (state.pendingRender || document.activeElement?.id === 'q') { state.pendingRender = false; const q = $('#q'); if (q) state.q = q.value; render(); } });
 // ほかの端末で変わっていれば反映する（画面に戻ったとき・1分ごと）
 document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(true); });
 setInterval(() => { if (!document.hidden && isCloud()) refresh(true); }, 60000);

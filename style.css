@@ -49,7 +49,7 @@ nav button .cnt { font-size: 11px; margin-left: 4px; opacity: 0.85; }
 @media (max-width: 640px) {
   .top { gap: 8px; padding: 8px 12px; padding-top: max(8px, env(safe-area-inset-top)); }
   nav { order: 3; width: 100%; }
-  nav button { flex: 1; padding: 8px 0; }
+  nav button { flex: 1; padding: 8px 0; white-space: nowrap; font-size: 14px; }
   .status { font-size: 11px; }
 }
 
@@ -95,9 +95,13 @@ label.f { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4
 .w-read { color: var(--muted); font-size: 12px; }
 .w-mean { margin-top: 2px; }
 .w-used { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.w-arrow { color: var(--red); font-size: 13px; margin-left: 6px; }
 .tag { display: inline-block; font-size: 11px; padding: 1px 9px; border-radius: 999px; border: 1px solid var(--red-dim); color: #ff9c9e; white-space: nowrap; }
 .w-detail { margin-top: 10px; padding: 10px 12px; background: var(--panel2); border-radius: 8px; cursor: default; }
 .w-detail .ex { border-left: 3px solid var(--red); padding-left: 10px; margin: 6px 0 10px; }
+.w-detail .pair { margin: 4px 0 10px; padding-left: 1.2em; }
+.w-detail .pair li { border: none; padding: 2px 0; cursor: default; }
+.w-detail .pair li:hover { background: none; }
 .w-detail .uses { color: var(--muted); font-size: 13px; margin: 6px 0; }
 .w-detail .acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 .empty { color: var(--muted); padding: 18px 0; text-align: center; }
@@ -112,7 +116,7 @@ label.f { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4
 /* メモ */
 .memo { list-style: none; margin: 10px 0 0; padding: 0; }
 .memo li { display: flex; align-items: center; gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--line); }
-.memo li span { flex: 1; font-size: 17px; }
+.memo li span { flex: 1; font-size: 17px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .memo li small { color: var(--muted); font-size: 11px; }
 .icon { background: none; border: none; color: var(--muted); cursor: pointer; padding: 0 6px; font-size: 16px; }
 .icon:hover { color: var(--red); }

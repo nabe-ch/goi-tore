@@ -1,8 +1,9 @@
 // Claude用：メモの言葉を調べて登録するための道具（データの置き場所：C:\Users\user\Desktop\code\goi-tore-words\data.json）
 // 使い方：
 //   node tools/apply.js list            … GitHubから最新を取り、メモを「調べる必要あり／登録済み・調べ済み（調べずに消す）」に分けて表示
-//   node tools/apply.js add <file.json> … 調べた結果（[{word, reading, meaning, example, category, source}]）を登録し、
+//   node tools/apply.js add <file.json> … 調べた結果（[{word, reading, meaning, example, related:[2つ], lines:[2つ], category, source}]）を登録し、
 //                                          登録した言葉と、登録済み・調べ済みの言葉をメモから消して、GitHubへ送る
+//   node tools/apply.js update <file.json> … 登録済みの言葉に項目を足す（[{word, related, lines, ...}]。指定した項目だけ上書き）
 // 注意：始める前に必ず GitHub の最新にそろえる（このパソコンの取り込み先には、独自の変更を置かない運用）
 const fs = require('fs');
 const path = require('path');
@@ -45,8 +46,10 @@ function add(file) {
     for (const e of entries) {
       if (!e.word || !e.meaning) throw new Error('word と meaning は必須: ' + JSON.stringify(e));
       if (!CATS.includes(e.category)) throw new Error('大項目が一覧にありません: ' + e.category);
+      if (!Array.isArray(e.related) || e.related.length !== 2) throw new Error('related（一緒に話せる言葉）は2つ: ' + e.word);
+      if (!Array.isArray(e.lines) || e.lines.length !== 2) throw new Error('lines（ユニークな言い回し）は2つ: ' + e.word);
       if (k.has(norm(e.word))) { dup.push(e.word); continue; }
-      d.words.push({ id: 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), word: e.word.trim(), reading: (e.reading || '').trim(), meaning: e.meaning.trim(), example: (e.example || '').trim(), category: e.category, source: (e.source || '').trim(), usedCount: 0, uses: [], createdAt: new Date().toISOString() });
+      d.words.push({ id: 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), word: e.word.trim(), reading: (e.reading || '').trim(), meaning: e.meaning.trim(), example: (e.example || '').trim(), related: e.related, lines: e.lines, category: e.category, source: (e.source || '').trim(), usedCount: 0, uses: [], createdAt: new Date().toISOString() });
       d.researched.push(e.word.trim()); k.add(norm(e.word)); added.push(e.word);
     }
     // メモから消す：今回登録した言葉＋登録済み・調べ済みの言葉（調べ直さない）
@@ -63,7 +66,29 @@ function add(file) {
   throw new Error('3回やり直しても送れませんでした');
 }
 
+function update(file) {
+  const entries = JSON.parse(fs.readFileSync(file, 'utf8'));
+  for (let attempt = 0; attempt < 3; attempt++) {
+    sync();
+    const d = read(); const done = [];
+    for (const e of entries) {
+      const w = d.words.find((x) => norm(x.word) === norm(e.word));
+      if (!w) throw new Error('登録されていません: ' + e.word);
+      for (const k of Object.keys(e)) if (k !== 'word' && k !== 'id') w[k] = e[k];
+      done.push(w.word);
+    }
+    write(d);
+    if (!hasRemote()) { console.log(JSON.stringify({ updated: done, pushed: false })); return; }
+    git('add', 'data.json');
+    git('commit', '-m', `語彙とれ：${done.length}語に項目を追加`);
+    try { git('push', 'origin', 'HEAD:main'); console.log(JSON.stringify({ updated: done, pushed: true })); return; }
+    catch (e) { console.log('送信がぶつかったので、最新を取り直してやり直します'); }
+  }
+  throw new Error('3回やり直しても送れませんでした');
+}
+
 const [cmd, arg] = process.argv.slice(2);
 if (cmd === 'list') list();
 else if (cmd === 'add' && arg) add(arg);
-else console.log('使い方: node tools/apply.js list | add <file.json>');
+else if (cmd === 'update' && arg) update(arg);
+else console.log('使い方: node tools/apply.js list | add <file.json> | update <file.json>');
