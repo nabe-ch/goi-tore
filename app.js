@@ -189,10 +189,9 @@ function wordItem(w) {
       ${w.example ? `<div class="note">実況での使い方</div><div class="ex">${esc(w.example)}</div>` : ''}
       ${(w.related || []).length ? `<div class="note">一緒に話せる言葉</div><ul class="pair">${w.related.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
       ${(w.lines || []).length ? `<div class="note">ユニークな言い回し</div><ul class="pair">${w.lines.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
-      <div class="uses">${(w.uses || []).length ? '使った動画：' + w.uses.slice(-5).reverse().map((u) => `${esc(u.date)} ${esc(u.video)}`).join('／') : 'まだ動画で使っていません'}</div>
       ${w.source ? `<div class="note">意味の出典：${esc(w.source)}</div>` : ''}
-      ${isCloud() ? '' : '<div class="note">「動画で使った」の記録・修正は、合い鍵を入れた端末で行えます</div>'}
-      ${isCloud() ? `<div class="acts"><button class="btn red sm" data-use="${esc(w.id)}">動画で使った</button><button class="btn sm" data-edit="${esc(w.id)}">直す</button><button class="btn sm ghost" data-del="${esc(w.id)}">削除</button></div>` : ''}
+      ${isCloud() ? '' : '<div class="note">修正は、合い鍵を入れた端末で行えます</div>'}
+      ${isCloud() ? `<div class="acts"><button class="btn sm" data-edit="${esc(w.id)}">直す</button><button class="btn sm ghost" data-del="${esc(w.id)}">削除</button></div>` : ''}
     </div>` : ''}
   </li>`;
 }
@@ -280,13 +279,6 @@ function bind() {
     if (e.target.closest('[data-stop]')) return;
     state.open = state.open === li.dataset.open ? null : li.dataset.open; render();
   });
-  document.querySelectorAll('[data-use]').forEach((b) => b.onclick = () => run(async () => {
-    const video = prompt('どの動画で使いましたか？（例：救助隊DX ＃3）', '');
-    if (video === null) return;
-    const day = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
-    await change((d) => { const w = d.words.find((x) => x.id === b.dataset.use); if (!w) return false; (w.uses = w.uses || []).push({ date: day, video: video.trim().slice(0, 60) }); }, '使った記録');
-    toast('記録しました');
-  }));
   document.querySelectorAll('[data-edit]').forEach((b) => b.onclick = () => run(async () => {
     const w = state.data.words.find((x) => x.id === b.dataset.edit); if (!w) return;
     const meaning = prompt('意味', w.meaning); if (meaning === null) return;

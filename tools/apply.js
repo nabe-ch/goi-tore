@@ -49,7 +49,7 @@ function add(file) {
       if (!Array.isArray(e.related) || e.related.length !== 2) throw new Error('related（一緒に話せる言葉）は2つ: ' + e.word);
       if (!Array.isArray(e.lines) || e.lines.length !== 2) throw new Error('lines（ユニークな言い回し）は2つ: ' + e.word);
       if (k.has(norm(e.word))) { dup.push(e.word); continue; }
-      d.words.push({ id: 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), word: e.word.trim(), reading: (e.reading || '').trim(), meaning: e.meaning.trim(), example: (e.example || '').trim(), related: e.related, lines: e.lines, category: e.category, source: (e.source || '').trim(), uses: [], createdAt: new Date().toISOString() });
+      d.words.push({ id: 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), word: e.word.trim(), reading: (e.reading || '').trim(), meaning: e.meaning.trim(), example: (e.example || '').trim(), related: e.related, lines: e.lines, category: e.category, source: (e.source || '').trim(), createdAt: new Date().toISOString() });
       d.researched.push(e.word.trim()); k.add(norm(e.word)); added.push(e.word);
     }
     // メモから消す：今回登録した言葉＋登録済み・調べ済みの言葉（調べ直さない）
