@@ -127,3 +127,5 @@ label.f { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4
 .warnbox { border: 1px dashed var(--red-dim); border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-bottom: 14px; }
 .qrbox { background: #fff; border-radius: 8px; width: min(320px, 100%); margin: 12px 0; line-height: 0; }
 .qrbox svg { width: 100%; height: auto; display: block; }
+.words li.w-group { color: var(--red); font-weight: 700; font-size: 14px; cursor: default; padding-top: 16px; padding-bottom: 6px; }
+.words li.w-group i { color: var(--muted); font-style: normal; font-weight: 400; font-size: 12px; margin-left: 8px; }

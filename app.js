@@ -150,8 +150,18 @@ function filtered() {
   let ws = state.data.words.filter((w) => (state.cat === 'all' || w.category === state.cat) && (!q || norm(w.word + ' ' + (w.reading || '') + ' ' + w.meaning).includes(q)));
   if (state.sort === 'new') ws.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   if (state.sort === 'kana') ws.sort((a, b) => (a.reading || a.word).localeCompare(b.reading || b.word, 'ja'));
-  if (state.sort === 'unused') ws.sort((a, b) => (a.usedCount || 0) - (b.usedCount || 0) || (b.createdAt || '').localeCompare(a.createdAt || ''));
+  // ジャンル別：大項目の並びの順に。同じ大項目の中は新しい順
+  if (state.sort === 'genre') {
+    const rank = (w) => { const i = state.data.categories.indexOf(w.category || 'その他'); return i < 0 ? state.data.categories.length : i; };
+    ws.sort((a, b) => rank(a) - rank(b) || (b.createdAt || '').localeCompare(a.createdAt || ''));
+  }
   return ws;
+}
+// 一覧の行。ジャンル別のときは、大項目ごとに見出しを入れる
+function wordRows(ws) {
+  if (state.sort !== 'genre') return ws.map(wordItem).join('');
+  const genre = (w) => w.category || 'その他';
+  return ws.map((w, i) => (i === 0 || genre(ws[i - 1]) !== genre(w) ? `<li class="w-group">${esc(genre(w))}<i>${ws.filter((x) => genre(x) === genre(w)).length}語</i></li>` : '') + wordItem(w)).join('');
 }
 function chips(cur, attr) {
   const count = (c) => state.data.words.filter((w) => w.category === c).length;
@@ -164,16 +174,16 @@ function viewList() {
   return `<div class="card">
     <h2>語彙の一覧</h2>
     <div class="row search"><input type="search" id="q" placeholder="言葉・意味で探す" value="${esc(state.q)}">
-      <select id="sort" style="flex:0 0 auto;width:auto"><option value="new">新しい順</option><option value="kana">あいうえお順</option><option value="unused">使った回数が少ない順</option></select></div>
+      <select id="sort" style="flex:0 0 auto;width:auto"><option value="new">新しい順</option><option value="kana">あいうえお順</option><option value="genre">ジャンル別</option></select></div>
     ${chips(state.cat, 'data-cat')}
     <div class="count">${ws.length}語${state.cat !== 'all' || state.q ? ` / 全${state.data.words.length}語` : ''}</div>
-    <ul class="words">${ws.length ? ws.map(wordItem).join('') : `<li class="empty">${state.data.words.length ? '当てはまる言葉がありません' : 'まだ言葉がありません。「メモ」に言葉を入れて、Claudeに「語彙とれのメモを調べて」と頼んでください'}</li>`}</ul>
+    <ul class="words">${ws.length ? wordRows(ws) : `<li class="empty">${state.data.words.length ? '当てはまる言葉がありません' : 'まだ言葉がありません。「メモ」に言葉を入れて、Claudeに「語彙とれのメモを調べて」と頼んでください'}</li>`}</ul>
   </div>`;
 }
 function wordItem(w) {
   const open = state.open === w.id;
   return `<li data-open="${esc(w.id)}">
-    <div class="w-head"><span class="w-word">${esc(w.word)}</span>${w.reading ? `<span class="w-read">${esc(w.reading)}</span>` : ''}<span class="tag">${esc(w.category || 'その他')}</span><span class="w-used">使った ${w.usedCount || 0}回<span class="w-arrow">${open ? '▲' : '▼'}</span></span></div>
+    <div class="w-head"><span class="w-word">${esc(w.word)}</span>${w.reading ? `<span class="w-read">${esc(w.reading)}</span>` : ''}<span class="tag">${esc(w.category || 'その他')}</span><span class="w-used"><span class="w-arrow">${open ? '▲' : '▼'}</span></span></div>
     <div class="w-mean">${esc(w.meaning)}</div>
     ${open ? `<div class="w-detail" data-stop="1">
       ${w.example ? `<div class="note">実況での使い方</div><div class="ex">${esc(w.example)}</div>` : ''}
@@ -181,7 +191,7 @@ function wordItem(w) {
       ${(w.lines || []).length ? `<div class="note">ユニークな言い回し</div><ul class="pair">${w.lines.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
       <div class="uses">${(w.uses || []).length ? '使った動画：' + w.uses.slice(-5).reverse().map((u) => `${esc(u.date)} ${esc(u.video)}`).join('／') : 'まだ動画で使っていません'}</div>
       ${w.source ? `<div class="note">意味の出典：${esc(w.source)}</div>` : ''}
-      ${isCloud() ? '' : '<div class="note">「動画で使った」の記録・修正は、PCで行えます</div>'}
+      ${isCloud() ? '' : '<div class="note">「動画で使った」の記録・修正は、合い鍵を入れた端末で行えます</div>'}
       ${isCloud() ? `<div class="acts"><button class="btn red sm" data-use="${esc(w.id)}">動画で使った</button><button class="btn sm" data-edit="${esc(w.id)}">直す</button><button class="btn sm ghost" data-del="${esc(w.id)}">削除</button></div>` : ''}
     </div>` : ''}
   </li>`;
@@ -202,13 +212,7 @@ function viewQuiz() {
     </div>` : '<div class="empty">言葉が登録されると、練習できます</div>'}
   </div>`;
 }
-// 使った回数が少ない言葉ほど出やすくする
-function pick(pool) {
-  const ws = pool.map((w) => 1 / (1 + (w.usedCount || 0)));
-  let r = Math.random() * ws.reduce((a, b) => a + b, 0);
-  for (let i = 0; i < pool.length; i++) { r -= ws[i]; if (r <= 0) return pool[i]; }
-  return pool[pool.length - 1];
-}
+function pick(pool) { return pool[Math.floor(Math.random() * pool.length)]; }
 
 function viewMemo() {
   return `<div class="card">
@@ -280,7 +284,7 @@ function bind() {
     const video = prompt('どの動画で使いましたか？（例：救助隊DX ＃3）', '');
     if (video === null) return;
     const day = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
-    await change((d) => { const w = d.words.find((x) => x.id === b.dataset.use); if (!w) return false; w.usedCount = (w.usedCount || 0) + 1; (w.uses = w.uses || []).push({ date: day, video: video.trim().slice(0, 60) }); }, '使った記録');
+    await change((d) => { const w = d.words.find((x) => x.id === b.dataset.use); if (!w) return false; (w.uses = w.uses || []).push({ date: day, video: video.trim().slice(0, 60) }); }, '使った記録');
     toast('記録しました');
   }));
   document.querySelectorAll('[data-edit]').forEach((b) => b.onclick = () => run(async () => {
